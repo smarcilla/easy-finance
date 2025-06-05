@@ -14,7 +14,10 @@ if (!process.env.GOOGLE_SHEETS_ID) {
 }
 
 // Client configuration
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/spreadsheets.readonly'
+];
 const KEY_FILE = process.cwd() + '/credentials.json';
 
 /**
@@ -82,15 +85,72 @@ export async function readGastos(limit?: number): Promise<Gasto[]> {
 
     const values = response.data.values || [];
     return (limit ? values.slice(0, limit) : values)
-      .map(row => ({
-        fecha: row[0]?.toString() || '',
-        monto: Number(row[1]) || 0,
-        categoria: row[2]?.toString() || '',
-        detalle: row[3]?.toString() || '',
-        hash: row[4]?.toString() || '',
-      }));
+      .map((row: any[]) => {
+        // Parse monto, handling both string and number inputs
+        let monto = 0;
+        if (row[1] !== undefined && row[1] !== null && row[1] !== '') {
+          // Convert to number, handling both . and , as decimal separators
+          const montoStr = row[1].toString().replace(',', '.');
+          monto = parseFloat(montoStr) || 0;
+        }
+        
+        return {
+          fecha: row[0]?.toString() || '',
+          monto,
+          categoria: row[2]?.toString() || '',
+          detalle: row[3]?.toString() || '',
+          hash: row[4]?.toString() || '',
+        };
+      });
   } catch (error) {
     console.error('Error reading from Google Sheets:', error);
     return [];
+  }
+}
+
+/**
+ * Agrega un nuevo gasto a la hoja de Google Sheets
+ * @param gasto Objeto que contiene los datos del gasto a agregar
+ * @throws {Error} Si falta algún campo requerido o hay un error en la operación
+ */
+export async function appendGasto(gasto: Gasto): Promise<void> {
+  try {
+    // Validar que el gasto tenga todos los campos requeridos
+    if (!gasto.fecha || !gasto.categoria || !gasto.detalle || !gasto.hash) {
+      throw new Error('Todos los campos del gasto son requeridos');
+    }
+
+    const sheets = await getSheetsClient();
+    
+    // Convertir el objeto gasto a un array de valores en el orden correcto
+    // Asegurarse de que el monto sea un número
+    const monto = typeof gasto.monto === 'string' ? parseFloat(gasto.monto) : gasto.monto;
+    
+    const values = [
+      [
+        gasto.fecha,
+        monto, // Usar el valor numérico
+        gasto.categoria,
+        gasto.detalle,
+        gasto.hash
+      ]
+    ];
+    
+    console.log('Appending values:', values); // Para depuración
+
+    // Realizar la operación de append
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+      range: 'Gastos!A:E',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values,
+      },
+    });
+    
+    console.log('Gasto agregado correctamente');
+  } catch (error) {
+    console.error('Error al agregar gasto:', error);
+    throw error; // Relanzar el error para que el llamador pueda manejarlo
   }
 }
