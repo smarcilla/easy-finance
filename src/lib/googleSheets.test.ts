@@ -1,4 +1,4 @@
-import { readGastos, getSpreadsheetInfo, verifySheetStructure, appendGasto } from '@/lib/googleSheets';
+import { readGastos, getSpreadsheetInfo, verifySheetStructure, appendGasto, readAllHashes } from '@/lib/googleSheets';
 
 describe('Google Sheets Utilities', () => {
   describe('getSpreadsheetInfo', () => {
@@ -25,6 +25,28 @@ describe('Google Sheets Utilities', () => {
         console.error('Test failed:', error);
         throw error;
       }
+    });
+  });
+
+  describe('readAllHashes', () => {
+    it('should return a Set containing all hashes from the sheet', async () => {
+      // First append a test gasto
+      const testGasto = {
+        fecha: '2025-06-05',
+        monto: 100,
+        categoria: 'Test',
+        detalle: 'Test expense',
+        hash: 'test-hash-123'
+      };
+      await appendGasto(testGasto);
+
+      // Read all hashes
+      const hashes = await readAllHashes();
+      
+      // Verify the Set contains the hash we just added
+      expect(hashes).toBeDefined();
+      expect(hashes instanceof Set).toBe(true);
+      expect(hashes.has(testGasto.hash)).toBe(true);
     });
   });
 

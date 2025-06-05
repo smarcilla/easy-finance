@@ -73,6 +73,26 @@ export async function verifySheetStructure(): Promise<boolean> {
 }
 
 /**
+ * Lee todos los hashes de la hoja de Google Sheets
+ * @returns Set de strings con todos los hashes existentes
+ */
+export async function readAllHashes(): Promise<Set<string>> {
+  try {
+    const sheets = await getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+      range: 'Gastos!E2:E',
+    });
+
+    const values = response.data.values || [];
+    return new Set(values.map(row => row[0]?.toString() || ''));
+  } catch (error) {
+    console.error('Error reading hashes:', error);
+    throw error;
+  }
+}
+
+/**
  * Lee gastos de la hoja de Google Sheets
  */
 export async function readGastos(limit?: number): Promise<Gasto[]> {
