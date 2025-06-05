@@ -1,6 +1,10 @@
-import { readGastos, getSpreadsheetInfo, verifySheetStructure, appendGasto, readAllHashes } from '@/lib/googleSheets';
+import { readGastos, getSpreadsheetInfo, verifySheetStructure, appendGasto, readAllHashes, filterAndAppend, clearGastos } from '@/lib/googleSheets';
 
 describe('Google Sheets Utilities', () => {
+  // Limpiar la hoja antes de cada test
+  beforeEach(async () => {
+    await clearGastos();
+  });
   describe('getSpreadsheetInfo', () => {
     it('should fetch spreadsheet metadata', async () => {
       try {
@@ -63,6 +67,55 @@ describe('Google Sheets Utilities', () => {
       expect(Array.isArray(result)).toBe(true);
       // Instead of checking for empty array, just verify it's an array
       // as we now have test data in the sheet
+    });
+  });
+
+  describe('filterAndAppend', () => {
+    it('should successfully append unique gastos and skip duplicates', async () => {
+      // Create two different gastos
+      const gasto1 = {
+        fecha: '2025-06-05',
+        monto: 100,
+        categoria: 'Test',
+        detalle: 'Test expense 1'
+      };
+      const gasto2 = {
+        fecha: '2025-06-05',
+        monto: 200,
+        categoria: 'Test',
+        detalle: 'Test expense 2'
+      };
+
+      // First append should succeed
+      const firstResult = await filterAndAppend([gasto1, gasto2]);
+      expect(firstResult.success).toBe(true);
+
+      // Second append of same gastos should fail
+      const secondResult = await filterAndAppend([gasto1, gasto2]);
+      expect(secondResult.success).toBe(false);
+
+      // Verify both gastos were added only once
+      const gastos = await readGastos();
+      expect(gastos.length).toBe(2);
+      // Verify both gastos are present and correct
+      const gasto1Match = gastos.find(g => 
+        g.fecha === gasto1.fecha && 
+        g.monto === gasto1.monto && 
+        g.categoria === gasto1.categoria && 
+        g.detalle === gasto1.detalle
+      );
+      expect(gasto1Match).toBeDefined();
+
+      const gasto2Match = gastos.find(g => 
+        g.fecha === gasto2.fecha && 
+        g.monto === gasto2.monto && 
+        g.categoria === gasto2.categoria && 
+        g.detalle === gasto2.detalle
+      );
+      expect(gasto2Match).toBeDefined();
+
+      // Verify that each gasto is unique
+      expect(gasto1Match?.hash).not.toBe(gasto2Match?.hash);
     });
   });
 

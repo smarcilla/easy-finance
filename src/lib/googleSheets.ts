@@ -1,6 +1,7 @@
 import { google, Auth } from 'googleapis';
 import { Gasto, GoogleSheetsConfig } from '@/types/googleSheets';
 import { GoogleAuth } from 'google-auth-library';
+import { computeHash } from '@/lib/crypto';
 
 // Configuración de Google Sheets
 const SHEETS_CONFIG: GoogleSheetsConfig = {
@@ -172,5 +173,63 @@ export async function appendGasto(gasto: Gasto): Promise<void> {
   } catch (error) {
     console.error('Error al agregar gasto:', error);
     throw error; // Relanzar el error para que el llamador pueda manejarlo
+  }
+}
+
+/**
+ * Filtra gastos duplicados y los añade en bloque a la hoja de Google Sheets
+ * @param rows Array de gastos a añadir
+ * @returns { success: boolean } indicando si la operación fue exitosa
+ */
+export async function filterAndAppend(rows: Array<Pick<Gasto, 'fecha' | 'monto' | 'categoria' | 'detalle'>>): Promise<{ success: boolean }> {
+  try {
+    // Obtener todos los hashes existentes
+    const existingHashes = await readAllHashes();
+    
+    // Filtrar gastos duplicados
+    const filteredRows: Gasto[] = [];
+    for (const row of rows) {
+      // Crear hash único para el gasto
+      const hashInput = `${row.fecha}-${row.monto}-${row.categoria}-${row.detalle}`;
+      const hash = computeHash(hashInput);
+      
+      // Si el hash no existe, agregar el gasto
+      if (!existingHashes.has(hash)) {
+        filteredRows.push({
+          ...row,
+          hash
+        });
+      }
+    }
+
+    // Si hay gastos nuevos, añadirlos
+    if (filteredRows.length > 0) {
+      for (const gasto of filteredRows) {
+        await appendGasto(gasto);
+      }
+      return { success: true };
+    }
+
+    // Si no hay gastos nuevos, devolver éxito = false
+    return { success: false };
+  } catch (error) {
+    console.error('Error en filterAndAppend:', error);
+    throw error;
+  }
+}
+
+/**
+ * Limpia todos los gastos de la hoja
+ */
+export async function clearGastos(): Promise<void> {
+  try {
+    const sheets = await getSheetsClient();
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+      range: SHEETS_CONFIG.range
+    });
+  } catch (error) {
+    console.error('Error al limpiar gastos:', error);
+    throw error;
   }
 }
