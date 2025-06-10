@@ -1,76 +1,15 @@
 import { promises as fs } from 'fs';
 import * as XLSX from 'xlsx';
 import { ExcelRow, ExcelError, ExcelColumnMap, ExcelFormat } from '../types/excel';
-import { format } from 'date-fns';
-
-// Definir diferentes formatos de Excel que podemos manejar
-const EXCEL_FORMATS: ExcelFormat[] = [
-    {
-        name: 'formato_bbva',
-        columnMap: {
-            fecha: 1, // Columna B
-            concepto: 2, // Columna C
-            movimiento: 3, // Columna D
-            importe: 4 // Columna E
-        },
-        validateRow: (row: any[], indices: ExcelColumnMap) => {
-            // Verificar que las columnas necesarias existen y no están vacías
-            return Object.entries(indices).every(([key, idx]) => {
-                const value = row[idx]?.toString().trim();
-                return value && value !== '' && value !== 'null' && value !== 'undefined';
-            });
-        },
-        parseDate: (dateStr: string) => {
-            // La fecha puede estar en formato DD/MM/YYYY o DD/MM/YY
-            const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
-            if (!match) return null;
-            const [day, month, year] = match.slice(1);
-            const fullYear = year.length === 2 ? `20${year}` : year;
-            return format(new Date(parseInt(fullYear), parseInt(month) - 1, parseInt(day)), 'yyyy-MM-dd');
-        },
-        parseAmount: (amount: any) => {
-            // Intentar convertir a número, ignorar si no es posible
-            const num = Number(amount);
-            if (isNaN(num) || amount === null || amount === undefined) return null;
-            return num;
-        }
-    },
-    {
-        name: 'formato_bbva_minimo',
-        columnMap: {
-            fecha: 0, // Columna A
-            concepto: 1, // Columna B
-            importe: 2, // Columna C
-            movimiento: 3 // Columna D
-        },
-        validateRow: (row: any[], indices: ExcelColumnMap) => {
-            // Verificar que las columnas necesarias existen y no están vacías
-            return Object.entries(indices).every(([key, idx]) => {
-                const value = row[idx]?.toString().trim();
-                return value && value !== '' && value !== 'null' && value !== 'undefined';
-            });
-        },
-        parseDate: (dateStr: string) => {
-            // La fecha puede estar en formato DD/MM/YYYY o DD/MM/YY
-            const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
-            if (!match) return null;
-            const [day, month, year] = match.slice(1);
-            const fullYear = year.length === 2 ? `20${year}` : year;
-            return format(new Date(parseInt(fullYear), parseInt(month) - 1, parseInt(day)), 'yyyy-MM-dd');
-        },
-        parseAmount: (amount: any) => {
-            // Intentar convertir a número, ignorar si no es posible
-            const num = Number(amount);
-            if (isNaN(num) || amount === null || amount === undefined) return null;
-            return num;
-        }
-    }
-];
+import { EXCEL_FORMATS } from './excel-formats';
 
 /**
  * Detectar el formato del Excel basado en las cabeceras
  */
-function detectExcelFormat(headers: string[]): ExcelFormat | null {
+function detectExcelFormat(headers: unknown[]): ExcelFormat | null {
+    // Verificar que es un array antes de continuar
+    if (!Array.isArray(headers)) return null;
+    
     // Convertir a minúsculas y normalizar para comparación
     const normalizedHeaders = headers.map(header => header?.toString().toLowerCase().trim() ?? '');
 
@@ -154,14 +93,14 @@ function parseRow(row: unknown, format: ExcelFormat): ExcelRow | null {
 export async function parseExcel(filePath: string): Promise<ExcelRow[]> {
     try {
         // Verificar que el archivo existe usando fs.promises
-        const fs = require('fs').promises;
         try {
             await fs.access(filePath);
         } catch (err: any) {
-            if (err.code === 'ENOENT') {
-                throw new Error('No such file or directory');
-            }
-            throw err;
+            throw {
+                type: 'file_not_found' as const,
+                message: 'No such file or directory',
+                data: { filePath }
+            };
         }
         
         // Leer el archivo Excel
@@ -170,76 +109,42 @@ export async function parseExcel(filePath: string): Promise<ExcelRow[]> {
         const worksheet = workbook.Sheets[sheetName];
         const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
         
-        // Si el archivo está vacío, retornar un array vacío
-        if (!Array.isArray(data) || data.length === 0) {
-            return [];
+        if (!Array.isArray(data)) {
+            throw {
+                type: 'invalid_format' as const,
+                message: 'El archivo no contiene datos válidos',
+                data: { sheetName }
+            };
         }
 
         // Detectar el formato del Excel
-        let headers: string[] = [];
-        let format: ExcelFormat | null = null;
-        
-        // Buscar las cabeceras en las primeras filas
-        for (let i = 0; i < Math.min(10, data.length); i++) {
-            const row = data[i];
-            if (Array.isArray(row)) {
-                const stringRow = row.map(cell => cell?.toString() ?? '');
-                if (stringRow.some(cell => cell.toLowerCase().includes('fecha'))) {
-                    headers = stringRow;
-                    format = detectExcelFormat(headers);
-                    if (format) break;
-                }
-            }
-        }
-
-        // Si no encontramos formato válido, intentar con la fila 4 por defecto
+        const format = detectExcelFormat(data[0]);
         if (!format) {
-            const defaultHeaders = data[4];
-            if (Array.isArray(defaultHeaders)) {
-                headers = defaultHeaders.map(cell => cell?.toString() ?? '');
-                format = detectExcelFormat(headers);
-            }
-        }
-
-        if (!format) {
-            throw new Error('El archivo no tiene el formato esperado');
+            throw {
+                type: 'invalid_format' as const,
+                message: 'No se pudo detectar el formato del archivo Excel',
+                data: { headers: data[0] }
+            };
         }
 
         // Procesar cada fila de datos
         const result: ExcelRow[] = [];
-        
-        // Saltar las primeras filas que son encabezados
-        let skipRows = true;
-        for (let i = 0; i < data.length; i++) {
+        for (let i = 1; i < data.length; i++) {
             const row = data[i];
+            if (!Array.isArray(row)) continue;
             
-            // Si encontramos la fila de encabezados, marcamos para empezar a procesar
-            if (row && Array.isArray(row) && row.some(cell => typeof cell === 'string' && cell.toLowerCase().includes('fecha'))) {
-                skipRows = false;
-                continue;
-            }
-            
-            // Si estamos en la sección de datos, procesamos la fila
-            if (!skipRows) {
-                const parsedRow = parseRow(row, format);
-                if (parsedRow) {
-                    result.push(parsedRow);
-                }
+            const parsedRow = format.parseRow(row, format.columnMap);
+            if (parsedRow) {
+                result.push(parsedRow);
             }
         }
         return result;
-    } catch (error) {
-        // Re-lanzar errores de archivo no encontrado
-        if (error instanceof Error && error.message.includes('No such file or directory')) {
+    } catch (error: unknown) {
+        if (error instanceof Error) {
             throw error;
         }
-        // Para errores de formato
-        if (error instanceof Error && error.message.includes('El archivo no tiene el formato esperado')) {
-            throw new Error(`Error al procesar el archivo Excel: ${error.message}`);
-        }
-        // Para otros errores, lanzar un error más específico
-        if (error instanceof Error) {
-            throw new Error(`Error al procesar el archivo Excel: ${error.message}`);
+        if (typeof error === 'object' && error !== null && 'type' in error && 'message' in error) {
+            throw error;
         }
         throw new Error('Error al procesar el archivo Excel: Error desconocido');
     }

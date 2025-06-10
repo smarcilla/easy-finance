@@ -51,11 +51,23 @@ describe('parseExcel', () => {
     it('should handle empty Excel file', async () => {
         // Este test se implementará cuando tengamos un fixture vacío
         expect.assertions(1);
-        await expect(parseExcel(path.join(__dirname, 'fixtures', 'empty.xlsx'))).resolves.toEqual([]);
+        await expect(parseExcel(path.join(__dirname, 'fixtures', 'empty.xlsx')))
+            .rejects
+            .toEqual({
+                type: 'invalid_format',
+                message: 'No se pudo detectar el formato del archivo Excel',
+                data: { headers: undefined }
+            });
     });
 
     it('should throw error for non-existent file', async () => {
         expect.assertions(1);
-        await expect(parseExcel('non-existent-file.xlsx')).rejects.toThrow('No such file or directory');
+        await expect(parseExcel('non-existent-file.xlsx'))
+            .rejects
+            .toEqual({
+                type: 'file_not_found',
+                message: 'No such file or directory',
+                data: { filePath: 'non-existent-file.xlsx' }
+            });
     });
 });
