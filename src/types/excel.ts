@@ -6,7 +6,7 @@ export interface ExcelRow {
 }
 
 export interface ExcelError {
-    type: 'invalid_format' | 'invalid_date' | 'invalid_amount' | 'missing_columns';
+    type: 'invalid_format' | 'invalid_date' | 'invalid_amount' | 'missing_columns' | 'file_not_found';
     message: string;
     row?: number;
     data?: any;
@@ -14,15 +14,20 @@ export interface ExcelError {
 
 export interface ExcelColumnMap {
     fecha: number;
-    movimiento: number;
     concepto: number;
+    movimiento: number;
     importe: number;
+}
+
+export interface GastoRow extends ExcelRow {
+    hash: string;
 }
 
 export interface ExcelFormat {
     name: string;
     columnMap: ExcelColumnMap;
-    validateRow: (row: any[], indices: ExcelColumnMap) => boolean;
+    validateRow: (row: unknown[], indices: ExcelColumnMap) => boolean;
     parseDate: (dateStr: string) => string | null;
-    parseAmount: (amount: any) => number | null;
+    parseAmount: (amount: unknown) => number | null;
+    parseRow: (row: unknown[], indices: ExcelColumnMap) => ExcelRow | null;
 }
