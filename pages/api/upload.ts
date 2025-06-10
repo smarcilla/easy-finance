@@ -7,6 +7,15 @@ import { readProcessedFiles } from '@/utils/processedFiles';
 import { appendProcessedFile } from '@/utils/processedFiles';
 import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
+import * as dotenv from 'dotenv';
+
+// Cargar variables de entorno
+dotenv.config();
+
+// Configuración de upload
+const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
+const ALLOWED_EXTENSIONS = (process.env.ALLOWED_EXTENSIONS || 'xlsx,pdf').split(',');
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760'); // 10MB por defecto
 
 // Tipos para multer
 interface MulterFile extends Express.Multer.File {
@@ -22,14 +31,16 @@ interface ExtendedNextApiRequest extends NextApiRequest {
 }
 
 const upload = multer({
-  dest: 'uploads/',
+  dest: UPLOAD_DIR,
+  limits: {
+    fileSize: MAX_FILE_SIZE
+  },
   fileFilter: (req: ExtendedNextApiRequest, file: MulterFile, cb: (error?: Error | null, acceptFile?: boolean) => void) => {
-    const allowedExtensions = ['.xlsx', '.pdf'];
     const ext = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
-    if (allowedExtensions.includes(ext)) {
+    if (ALLOWED_EXTENSIONS.includes(ext.substring(1))) {
       cb(null, true);
     } else {
-      cb(new Error('Solo se permiten archivos Excel (.xlsx) o PDF (.pdf)'));
+      cb(new Error(`Solo se permiten archivos con extensiones: ${ALLOWED_EXTENSIONS.join(', ')}`));
     }
   }
 });
@@ -77,7 +88,7 @@ export default async function handler(
     const driveResponse = await driveClient.files.create({
       requestBody: {
         name: file.originalname,
-        parents: ['1Lc9X1Zj16KU1vD10wQ1p56JQ1p56JQ1p'] // ID de la carpeta en Google Drive
+        parents: [process.env.GOOGLE_DRIVE_FOLDER_ID || '1Lc9X1Zj16KU1vD10wQ1p56JQ1p56JQ1p']
       },
       media: {
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

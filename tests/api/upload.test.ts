@@ -7,8 +7,11 @@ jest.mock('fs', () => ({
     pipe: jest.fn()
   })),
   promises: {
-    unlink: jest.fn(() => Promise.resolve())
-  }
+    unlink: jest.fn(() => Promise.resolve()),
+    access: jest.fn(() => Promise.resolve())
+  },
+  unlinkSync: jest.fn(),
+  existsSync: jest.fn(() => true)
 }));
 import { parseExcel } from '@/utils/parseExcel';
 import { filterAndAppend } from '@/utils/googleSheets';
