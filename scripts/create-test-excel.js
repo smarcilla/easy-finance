@@ -19,4 +19,4 @@ const worksheet = XLSX.utils.aoa_to_sheet(data);
 XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimientos');
 
 // Guardar el archivo
-XLSX.writeFile(workbook, './tests/fixtures/test.xlsx');
+XLSX.writeFile(workbook, './tests/api/fixtures/test.xlsx');
